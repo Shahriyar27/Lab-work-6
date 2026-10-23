@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Система уведомлений · Лабораторная №6</title>
+  <style>
+    * { box-sizing: border-box; } body { margin: 0; background: #f1f5f9; color: #17243b; font: 16px/1.6 system-ui, sans-serif; }
+    main { max-width: 960px; margin: 40px auto; padding: 0 20px; } h1 { line-height: 1.2; } .label { color: #526581; }
+    section { background: white; padding: 24px; margin: 24px 0; border-radius: 16px; box-shadow: 0 4px 24px #17243b0a; }
+    .notice { background: #e0edff; padding: 16px; border-radius: 12px; } label { display: block; margin: 12px 0 5px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 12px; border: 1px solid #bbc6d6; border-radius: 8px; font: inherit; } textarea { min-height: 110px; }
+    button { background: #245cce; color: white; padding: 12px 20px; border: 0; border-radius: 8px; cursor: pointer; font: inherit; margin-top: 16px; }
+    button:disabled { opacity: .6; cursor: wait; } #result { white-space: pre-wrap; } .error { color: #a32121; }
+    .table-wrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; } th, td { text-align: left; padding: 12px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; } td { overflow-wrap: anywhere; min-width: 100px; white-space: pre-wrap; }
+    .heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; } .heading button { margin: 0; }
+  </style>
+</head>
+<body><main>
+  <p class="label">Лабораторная работа №6 · Вариант 1</p>
+  <h1>Система уведомлений</h1>
+  <p class="notice">Демонстрационная отправка: письма, SMS и Push не доставляются реальным получателям. Результат сохраняется только в локальную базу.</p>
+  <section><h2>Новое уведомление</h2>
+    <form id="form">
+      <label for="type">Канал</label><select id="type"><option value="email">Email</option><option value="sms">SMS</option><option value="push">Push</option></select>
+      <label for="recipient">Получатель</label><input id="recipient" required placeholder="Адрес, номер телефона или ID устройства">
+      <label for="message">Сообщение</label><textarea id="message" required placeholder="Введите текст уведомления"></textarea>
+      <button id="send" type="submit">Отправить</button>
+    </form><p id="result" role="status" aria-live="polite"></p>
+  </section>
+  <section><div class="heading"><h2>История уведомлений</h2><button id="refresh" type="button">Обновить историю</button></div>
+    <p id="history-status" role="status"></p>
+    <div class="table-wrap"><table><thead><tr><th>ID / время</th><th>Канал</th><th>Получатель</th><th>Сообщение</th><th>Статус</th></tr></thead><tbody id="history"></tbody></table></div>
+  </section>
+</main><script>
+  const form = document.getElementById('form');
+  const result = document.getElementById('result');
+  const send = document.getElementById('send');
+  const refresh = document.getElementById('refresh');
+  const historyStatus = document.getElementById('history-status');
+  async function api(url, options) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Ошибка сервера');
+    return data;
+  }
+  async function loadHistory() {
+    refresh.disabled = true;
+    historyStatus.textContent = 'Загрузка…';
+    historyStatus.className = '';
+    try {
+      const data = await api('/api/notifications');
+      const body = document.getElementById('history');
+      body.replaceChildren();
+      for (const item of data.notifications) {
+        const row = document.createElement('tr');
+        const values = [`#${item.id}\n${new Date(item.created_at).toLocaleString('ru-RU')}`, item.type, item.recipient, item.message, item.status === 'simulated' ? 'Имитация' : item.status];
+        for (const value of values) {
+          const cell = document.createElement('td');
+          // Пользовательский текст никогда не вставляется как HTML.
+          cell.textContent = value;
+          row.appendChild(cell);
+        }
+        body.appendChild(row);
+      }
+      historyStatus.textContent = data.notifications.length ? `Записей: ${data.notifications.length}. Новые — сверху.` : 'История пока пуста.';
+    } catch (error) { historyStatus.textContent = 'Не удалось загрузить историю: ' + error.message; historyStatus.className = 'error'; }
+    finally { refresh.disabled = false; }
+  }
+  form.addEventListener('submit', async event => {
+    event.preventDefault(); send.disabled = true; result.className = ''; result.textContent = 'Обработка…';
+    try {
+      const data = await api('/api/send-notification', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({type: document.getElementById('type').value, recipient: document.getElementById('recipient').value, message: document.getElementById('message').value})});
+      result.textContent = `${data.message} Запись №${data.notification.id}.`;
+      await loadHistory();
+    } catch (error) { result.textContent = error.message; result.className = 'error'; }
+    finally { send.disabled = false; }
+  });
+  refresh.addEventListener('click', loadHistory);
+  loadHistory();
+</script></body></html>
